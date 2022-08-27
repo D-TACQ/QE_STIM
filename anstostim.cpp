@@ -3,13 +3,19 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <math.h>
 
 
 #define PPR			10000	// PULSES PER REV
 #define MAX_RPS		100		// MAX revs per sec
 #define MAX_PPS     (PPR*MAX_RPS)
 
-#define ACC 		100     // Revs Per Sec Per Sec
+#define ACC 		10     // Revs Per Sec Per Sec
+
+#define T_RAMP      (MAX_RPS/ACC)
+#define S_RAMP      ((ACC*T_RAMP*T_RAMP)/2)
+
+#define TPS			10000000	// Ticks Per Second minimum unit of time
 
 class Move {
 public:
@@ -50,9 +56,50 @@ public:
 std::vector<Move> Move::moves;
 long Move::seq_start;
 
-class Trajectory {
-
+struct Trajectory {
+	unsigned uu;		// start speed
+	unsigned vv; 		// end speed
+	unsigned tt;        // duration in ticks
+	Trajectory(unsigned _uu, unsigned _vv, unsigned _tt):
+		uu(_uu), vv(_vv), tt(_tt)
+	{}
+	void print() const {
+		printf("Trajectory: uu:%3u vv:%3u tt:%3u  => ss:%u\n", uu, vv, tt, (uu+vv)*tt/2);
+	}
 };
+
+class Motion {
+	std::vector<Trajectory> stages;
+	const Move& move;
+
+	Motion(const Move& _move): move(_move) {
+		if (move.distance > 2*S_RAMP){
+			stages.emplace_back(Trajectory(0, MAX_RPS, T_RAMP));
+			stages.emplace_back(Trajectory(MAX_RPS, MAX_RPS, (move.distance-2*S_RAMP)/MAX_RPS));
+			stages.emplace_back(Trajectory(MAX_RPS, 0, T_RAMP));
+		}else{
+			unsigned s_ramp = move.distance/2;
+			unsigned t_ramp = sqrt(2*s_ramp/ACC);  // s=ut +1/2 at*t
+			unsigned vmax = ACC*t_ramp;
+			stages.emplace_back(Trajectory(0, vmax, t_ramp));
+			stages.emplace_back(Trajectory(vmax, 0, t_ramp));
+		}
+	}
+public:
+	void print() const {
+		printf("Motion of Move: "); move.print();
+		for (auto s: stages){
+			printf("\t"); s.print();
+		}
+	}
+
+	static std::vector<Motion> motions;
+	static void add(const Move& move){
+		motions.emplace_back(Motion(move));
+	}
+};
+
+std::vector<Motion> Motion::motions;
 
 int main(int argc, const char* argv[]){
 	printf("anstostim\n");
@@ -71,6 +118,9 @@ int main(int argc, const char* argv[]){
 
 	for (const Move& m : Move::moves){
 		m.print();
+		Motion::add(m);
 	}
-
+	for (const Motion& m : Motion::motions){
+		m.print();
+	}
 }
