@@ -13,12 +13,14 @@
 
 class Move {
 public:
-	static int start;
+	static long seq_start;
 	static std::vector<Move> moves;
 	const bool forwards;
 	const unsigned long distance;
+	const long start;
 
-	Move(bool _fwds, unsigned long _dist): forwards(_fwds), distance(_dist) {}
+	Move(bool _fwds, unsigned long _dist, unsigned long _start):
+		forwards(_fwds), distance(_dist), start(_start) {}
 
 	static bool input(std::string& line){
 		char dir;
@@ -27,9 +29,13 @@ public:
 		if (sscanf(def, "%c%lu", &dir, &dist) == 2){
 			switch(dir){
 			case '+':
-				moves.emplace_back(Move(true, dist)); return true;
+				moves.emplace_back(Move(true, dist, seq_start));
+				seq_start += dist;
+				return true;
 			case '-':
-				moves.emplace_back(Move(false, dist)); return true;
+				moves.emplace_back(Move(false, dist, seq_start));
+				seq_start -= dist;
+				return true;
 			default:
 				;
 			}
@@ -38,11 +44,15 @@ public:
 	}
 
 	void print() const {
-		printf("Move: %lu %s\n", distance, forwards? "Forward": "Reverse");
+		printf("Move: %10ld: %5lu %s\n", start, distance, forwards? "Forward": "Reverse");
 	}
 };
 std::vector<Move> Move::moves;
-int Move::start;
+long Move::seq_start;
+
+class Trajectory {
+
+};
 
 int main(int argc, const char* argv[]){
 	printf("anstostim\n");
