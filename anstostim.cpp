@@ -10,7 +10,7 @@
 #define MAX_RPS		100		// MAX revs per sec
 #define MAX_PPS     (PPR*MAX_RPS)
 
-#define ACC 		10     // Revs Per Sec Per Sec
+#define ACC 		50     // Revs Per Sec Per Sec
 
 #define T_RAMP      (MAX_RPS/ACC)
 #define S_RAMP      ((ACC*T_RAMP*T_RAMP)/2)
@@ -120,32 +120,58 @@ class QuadEncoder {
 
 	unsigned long long tick;
 	unsigned char* dio;				// only 4 bits are valid;
+	unsigned char* cursor;
 
-	void speed_up(const Trajectory& tj) {
+	void speed_up(const Trajectory& tj, bool forwards) {
 		printf("speed_up\n");
 	}
-	void full_ahead(const Trajectory& tj){
-		printf("full_ahead\n");
+	void full_ahead(const Trajectory& tj, bool forwards){
+		const unsigned ticks_per_pulse = TPS / (tj.uu * PPR);
+		const unsigned f50pc = ticks_per_pulse/2;
+		const unsigned f25pc = ticks_per_pulse/4;
+		const unsigned f75pc = 3*f25pc;
+		const unsigned states = tj.tt * TPS;
+		printf("full_ahead ticks_per_pulse:%u %s\n", ticks_per_pulse, forwards? "F": "R");
+
+		for (unsigned state = 0; state < states; ++state, ++cursor){
+			unsigned char yy = 0;
+			unsigned sfrac = state%ticks_per_pulse;
+
+			if (sfrac <= f50pc){
+				yy |= (forwards? ABIT: BBIT);
+			}
+			if (sfrac >= f25pc && sfrac <= f75pc){
+				yy |= (forwards? BBIT: ABIT);
+			}
+			*cursor = yy;
+		}
 	}
-	void slow_down(const Trajectory& tj){
+	void slow_down(const Trajectory& tj, bool forwards){
 		printf("slow down\n");
 	}
 public:
 	QuadEncoder(): ABIT(1<<0), BBIT(1<<1), IBIT(1<<2), EBIT(1<<3), tick(0) {
 		dio = new unsigned char[Trajectory::ttotal*TPS];
+		cursor = dio;
 		printf("QuadEncoder: tt:%u s TPS:%u  states:%u\n",
 				Trajectory::ttotal, TPS, Trajectory::ttotal*TPS);
+	}
+	~QuadEncoder() {
+		FILE* fp = fopen("dio.dat", "w");
+		fwrite(dio, 1, cursor-dio, fp);
+		fclose(fp);
+		delete [] dio;
 	}
 
 	void operator() (const Motion& motion) {
 		printf("QuadEncoder:"); motion.print();
 		for (const Trajectory tj: motion.stages){
 			if (tj.uu < tj.vv){
-				speed_up(tj);
+				speed_up(tj, motion.move.forwards);
 			}else if (tj.uu > tj.vv){
-				slow_down(tj);
+				slow_down(tj, motion.move.forwards);
 			}else{
-				full_ahead(tj);
+				full_ahead(tj, motion.move.forwards);
 			}
 		}
 	}
