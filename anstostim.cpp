@@ -178,6 +178,16 @@ public:
 			}
 		}
 	}
+	void compress(const char* fname){
+		unsigned raw_len = (cursor-dio)/2;
+		unsigned char* raw = new unsigned char[raw_len];
+		for (int iraw = 0; iraw < raw_len; ++iraw){
+			raw[iraw] = dio[iraw*2] << 4 | dio[iraw*2+1];
+		}
+		FILE* fp = fopen(fname, "w");
+		fwrite(raw, 1, raw_len, fp);
+		fclose(fp);
+	}
 };
 
 int main(int argc, const char* argv[]){
@@ -204,4 +214,5 @@ int main(int argc, const char* argv[]){
 	for (const Motion& m : Motion::motions){
 		qe(m);
 	}
+	qe.compress("dio4.dat");
 }
