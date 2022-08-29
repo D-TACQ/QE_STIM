@@ -12,6 +12,9 @@
 
 #define ACC 		50     // Revs Per Sec Per Sec
 
+#define ACCP		(ACC*PPR)	// Pulses per sec per sec
+#define ACCP_MS		(ACCP/1000) // Pulses per sec per msec
+
 #define T_RAMP      (MAX_RPS/ACC)
 #define S_RAMP      ((ACC*T_RAMP*T_RAMP)/2)
 
