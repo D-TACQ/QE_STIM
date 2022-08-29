@@ -88,5 +88,12 @@ pgm@peter-XPS-13-7390:~/PROJECTS/ANSTOSTIM$ hexdump -ve '1/4 "%08x\n"' dio4.dat 
 9:11002033
 
 
+pgm@peter-XPS-13-7390:~/PROJECTS/ANSTOSTIM$ ls -lh *.dat
+-rw-rw-r-- 1 pgm pgm   49 Aug 28 21:21 anstostim.dat
+-rw-rw-r-- 1 pgm pgm 124M Aug 29 14:39 dio4.dat
+-rw-rw-r-- 1 pgm pgm 248M Aug 29 14:39 dio.dat
+
+
+
 
 
