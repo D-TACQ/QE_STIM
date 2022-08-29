@@ -46,4 +46,47 @@ in each 1msec slice, generate N pulses, keep tabs on the total so as to gen the 
 
 Fault is preprogrammed as a list of transition times, insert at the appropriate slice 
 
+Results:
+
+2026  ./anstostim 
+ 2027  ls -l
+ 2028  hexdump -ve '1/1 "%02x\n"' raw.dat | grep -n . | more
+ 2029  hexdump -ve '1/1 "%02x\n"' dio4.dat | grep -n . | more
+ 2030  history
+ 2031  hexdump -ve '1/1 "%08x\n"' dio4.dat | grep -n . | more
+ 2032  hexdump -ve '1/4 "%08x\n"' dio4.dat | grep -n . | more
+
+Scott: is the packing correct?
+
+pgm@peter-XPS-13-7390:~/PROJECTS/ANSTOSTIM$ hexdump -ve '1/1 "%02x\n"' dio4.dat | grep -n . | more
+1:11
+2:33
+3:33
+4:20
+5:00
+6:11
+7:33
+8:33
+9:20
+10:00
+11:11
+12:33
+13:33
+14:20
+
+
+But what we really load is:
+pgm@peter-XPS-13-7390:~/PROJECTS/ANSTOSTIM$ hexdump -ve '1/4 "%08x\n"' dio4.dat | grep -n . | head
+1:20333311
+2:33331100
+3:33110020
+4:11002033
+5:00203333
+6:20333311
+7:33331100
+8:33110020
+9:11002033
+
+
+
 
