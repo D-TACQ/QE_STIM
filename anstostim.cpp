@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <math.h>
+#include <algorithm>
 
 
 #define PPR			10000	// PULSES PER REV
@@ -125,17 +126,12 @@ class QuadEncoder {
 	unsigned char* dio;				// only 4 bits are valid;
 	unsigned char* cursor;
 
-	void speed_up(const Trajectory& tj, bool forwards) {
-		printf("speed_up\n");
-	}
-	void full_ahead(const Trajectory& tj, bool forwards){
-		const unsigned ticks_per_pulse = TPS / (tj.uu * PPR);
+	void make_pulses(unsigned ticks_per_pulse, unsigned states, bool forwards){
 		const unsigned f50pc = ticks_per_pulse/2;
 		const unsigned f25pc = ticks_per_pulse/4;
 		const unsigned f75pc = 3*f25pc;
-		const unsigned states = tj.tt * TPS;
-		printf("full_ahead ticks_per_pulse:%u %s\n", ticks_per_pulse, forwards? "F": "R");
 
+		//printf("make_pulses tpp:%u states:%u %s\n", ticks_per_pulse, states, forwards?"F":"R");
 		for (unsigned state = 0; state < states; ++state, ++cursor){
 			unsigned char yy = 0;
 			unsigned sfrac = state%ticks_per_pulse;
@@ -149,8 +145,43 @@ class QuadEncoder {
 			*cursor = yy;
 		}
 	}
+	unsigned vx_pps(const Trajectory& tj, unsigned long tick){
+		unsigned long maxticks = tj.tt * TPS;
+		if (tj.vv > tj.uu){
+			return PPR*tj.uu + PPR*(tj.vv-tj.uu)*tick/maxticks;
+		}else{
+			return PPR*tj.uu - PPR*(tj.uu-tj.vv)*tick/maxticks;
+		}
+	}
+	void ramp(const Trajectory& tj, bool forwards){
+		const unsigned long max_ticks = tj.tt * TPS;
+		unsigned ticks_per_pulse;
+		for (unsigned long tick = 0; tick < max_ticks;  tick += ticks_per_pulse){
+			if (vx_pps(tj, tick) < 10 /*== 0*/ ){
+				*cursor++ = 0;
+				ticks_per_pulse = 1;
+			}else{
+				//printf("ramp ticks:%lu\n", tick);
+				ticks_per_pulse = TPS / vx_pps(tj, tick);
+				int limit = ticks_per_pulse;
+				if (limit > max_ticks-tick) limit = max_ticks-tick;
+				make_pulses(ticks_per_pulse, limit, forwards);
+			}
+		}
+	}
+	void speed_up(const Trajectory& tj, bool forwards) {
+		printf("speed_up\n");
+		ramp(tj, forwards);
+	}
+	void full_ahead(const Trajectory& tj, bool forwards){
+		const unsigned ticks_per_pulse = TPS / (tj.uu * PPR);
+		const unsigned states = tj.tt * TPS;
+		printf("full_ahead ticks_per_pulse:%u %s\n", ticks_per_pulse, forwards? "F": "R");
+		make_pulses(ticks_per_pulse, states, forwards);
+	}
 	void slow_down(const Trajectory& tj, bool forwards){
 		printf("slow down\n");
+		ramp(tj, forwards);
 	}
 public:
 	QuadEncoder(): ABIT(1<<0), BBIT(1<<1), IBIT(1<<2), EBIT(1<<3), tick(0) {

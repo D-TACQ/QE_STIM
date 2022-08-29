@@ -1,5 +1,6 @@
 
 
+CXXFLAGS=-std=c++11 -g
 
 anstostim: anstostim.cpp
 
