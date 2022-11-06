@@ -134,26 +134,44 @@ class QuadEncoder {
 		const unsigned f50pc = ticks_per_pulse/2;
 		const unsigned f25pc = ticks_per_pulse/4;
 		const unsigned f75pc = 3*f25pc;
+		int index_stretch_countdown = 0;
 
 		//printf("make_pulses tpp:%u states:%u %s\n", ticks_per_pulse, states, forwards?"F":"R");
 		for (unsigned state = 0; state < states; ++state, ++cursor){
 			unsigned char yy = 0;
 			unsigned sfrac = state%ticks_per_pulse;
 
-			if (state && sfrac == 0){
-				++line;
-				if (line > PPR){
-					line = 0;
-				}
-			}
-			yy |= line == 0? IBIT: 0;
-
+			/* AquadB */
 			if (sfrac <= f50pc){
 				yy |= (forwards? ABIT: BBIT);
 			}
 			if (sfrac >= f25pc && sfrac <= f75pc){
 				yy |= (forwards? BBIT: ABIT);
 			}
+			/* INDEX */
+			if (state && sfrac == 0){
+				++line;
+				if (line > PPR){
+					line = 0;
+				}
+			}
+
+			if (line == 0){
+				yy |= line == 0? IBIT: 0;
+
+				if (index_stretch){
+					index_stretch_countdown = index_stretch;
+				}
+			}
+			if (index_stretch_countdown){
+				yy |= IBIT;
+				--index_stretch_countdown;
+			}
+			/* ERROR */
+			if (!forwards && ebit_shows_reverse){
+				yy |= EBIT;
+			}
+
 			*cursor = yy;
 		}
 	}
@@ -231,7 +249,12 @@ public:
 		fwrite(raw, 1, raw_len, fp);
 		fclose(fp);
 	}
+	static int index_stretch;
+	static int ebit_shows_reverse;
 };
+
+int QuadEncoder::index_stretch;
+int QuadEncoder::ebit_shows_reverse;
 
 int main(int argc, const char* argv[]){
 	printf("anstostim\n");
@@ -242,10 +265,14 @@ int main(int argc, const char* argv[]){
 			 << "anstostim.dat" << "'" << std::endl;
 		return EXIT_FAILURE;
 	}
+	std::string fname_ext;
 
 	std::string line;
 	while (std::getline(input_file, line)){
-		if (sscanf(line.c_str(), "STARTLINE=%u", &start_line) == 1){
+		if (sscanf(line.c_str(), "STARTLINE=%u", &start_line) == 1 ||
+		    sscanf(line.c_str(), "INDEX_STRETCH=%u", &QuadEncoder::index_stretch) == 1 ||
+		    sscanf(line.c_str(), "EBIT_SHOWS_REVERSE=%u", &QuadEncoder::ebit_shows_reverse) == 1){
+			fname_ext += "_" + line;
 			continue;
 		}
 		Move::input(line);
@@ -261,5 +288,7 @@ int main(int argc, const char* argv[]){
 	for (const Motion& m : Motion::motions){
 		qe(m);
 	}
-	qe.compress("dio4.dat");
+	std::string fname = "dio4.dat" + fname_ext;
+	printf("Compress file: %s\n", fname.c_str());
+	qe.compress(fname.c_str());
 }

@@ -1,4 +1,7 @@
 # anstostim moves test file
+STARTLINE=1234
+INDEX_STRETCH=200000
+EBIT_SHOWS_REVERSE=1
 +500
 -1000
 +300
