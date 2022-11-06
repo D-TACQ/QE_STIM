@@ -7,6 +7,9 @@
 #include <algorithm>
 
 
+/* PULSES are position */
+/* TICKS are samples clocks, constant 10MHz */
+
 #define PPR			10000	// PULSES PER REV
 #define MAX_RPS		100		// MAX revs per sec
 #define MAX_PPS     (PPR*MAX_RPS)
@@ -125,6 +128,7 @@ class QuadEncoder {
 	unsigned long long tick;
 	unsigned char* dio;				// only 4 bits are valid;
 	unsigned char* cursor;
+	unsigned long line;
 
 	void make_pulses(unsigned ticks_per_pulse, unsigned states, bool forwards){
 		const unsigned f50pc = ticks_per_pulse/2;
@@ -135,6 +139,14 @@ class QuadEncoder {
 		for (unsigned state = 0; state < states; ++state, ++cursor){
 			unsigned char yy = 0;
 			unsigned sfrac = state%ticks_per_pulse;
+
+			if (state && sfrac == 0){
+				++line;
+				if (line > PPR){
+					line = 0;
+				}
+			}
+			yy |= line == 0? IBIT: 0;
 
 			if (sfrac <= f50pc){
 				yy |= (forwards? ABIT: BBIT);
@@ -184,7 +196,7 @@ class QuadEncoder {
 		ramp(tj, forwards);
 	}
 public:
-	QuadEncoder(): ABIT(1<<0), BBIT(1<<1), IBIT(1<<2), EBIT(1<<3), tick(0) {
+	QuadEncoder(unsigned _line=0): ABIT(1<<0), BBIT(1<<1), IBIT(1<<2), EBIT(1<<3), tick(0), line(_line) {
 		dio = new unsigned char[Trajectory::ttotal*TPS];
 		cursor = dio;
 		printf("QuadEncoder: tt:%u s TPS:%u  states:%u\n",
@@ -224,6 +236,7 @@ public:
 int main(int argc, const char* argv[]){
 	printf("anstostim\n");
 	std::ifstream input_file("anstostim.dat");
+	unsigned start_line;
 	if (!input_file.is_open()) {
 		std::cerr << "Could not open the file - '"
 			 << "anstostim.dat" << "'" << std::endl;
@@ -232,6 +245,9 @@ int main(int argc, const char* argv[]){
 
 	std::string line;
 	while (std::getline(input_file, line)){
+		if (sscanf(line.c_str(), "STARTLINE=%u", &start_line) == 1){
+			continue;
+		}
 		Move::input(line);
 	}
 	input_file.close();
@@ -241,7 +257,7 @@ int main(int argc, const char* argv[]){
 		Motion::add(m);
 	}
 	printf("Total distance: %lu\n", Move::total_distance);
-	QuadEncoder qe;
+	QuadEncoder qe(start_line);
 	for (const Motion& m : Motion::motions){
 		qe(m);
 	}
