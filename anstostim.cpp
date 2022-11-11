@@ -5,6 +5,7 @@
 #include <string>
 #include <math.h>
 #include <algorithm>
+#include <cstring>
 
 
 /* PULSES are position */
@@ -125,6 +126,9 @@ class QuadEncoder {
 	const int IBIT;
 	const int EBIT;
 
+	const int FWD[4] = { ABIT, ABIT|BBIT, BBIT, 0 };   // a 4 state LUT might be cleaner..
+	const int BAK[4] = { BBIT, BBIT|ABIT, ABIT, 0 };
+
 	unsigned long long tick;
 	unsigned char* dio;				// only 4 bits are valid;
 	unsigned char* cursor;
@@ -239,6 +243,24 @@ public:
 			}
 		}
 	}
+
+	void dump_byte_per_bit(const char* fname) {
+		const unsigned raw_len = (cursor-dio)/2;
+		auto bytes = new char [raw_len][4];
+
+		memset(bytes, 0, raw_len*4);
+
+		for (int ii = 0; ii < raw_len; ++ii){
+			char yy = dio[ii];
+			if (yy & ABIT) bytes[ii][0] = 1;
+			if (yy & BBIT) bytes[ii][1] = 1;
+			if (yy & IBIT) bytes[ii][2] = 1;
+			if (yy & EBIT) bytes[ii][3] = 1;
+		}
+		FILE* fp = fopen(fname, "w");
+		fwrite(bytes, 4, raw_len, fp);
+		fclose(fp);
+	}
 	void compress(const char* fname){
 		unsigned raw_len = (cursor-dio)/2;
 		unsigned char* raw = new unsigned char[raw_len];
@@ -257,14 +279,16 @@ int QuadEncoder::index_stretch;
 int QuadEncoder::ebit_shows_reverse;
 
 int main(int argc, const char* argv[]){
-	printf("anstostim\n");
-	std::ifstream input_file("anstostim.dat");
+	std::string config_file = "anstostim.cfg";
+	if (argc > 1) config_file = argv[1];
+	std::ifstream input_file(config_file);
 	unsigned start_line;
 	if (!input_file.is_open()) {
 		std::cerr << "Could not open the file - '"
-			 << "anstostim.dat" << "'" << std::endl;
+			 << config_file << "'" << std::endl;
 		return EXIT_FAILURE;
 	}
+
 	std::string fname_ext;
 
 	std::string line;
@@ -288,7 +312,11 @@ int main(int argc, const char* argv[]){
 	for (const Motion& m : Motion::motions){
 		qe(m);
 	}
-	std::string fname = "dio4.dat" + fname_ext;
+	std::string fnamed = config_file + "-c4" + fname_ext;
+	printf("Dump file: %s\n", fnamed.c_str());
+	qe.dump_byte_per_bit(fnamed.c_str());
+
+	std::string fname = config_file + "-dio4" + fname_ext;
 	printf("Compress file: %s\n", fname.c_str());
 	qe.compress(fname.c_str());
 }
