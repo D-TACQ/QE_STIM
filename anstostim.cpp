@@ -159,7 +159,7 @@ class QuadEncoder {
 		assert (cursor-dio < max_dio*2-pulses*ticks_per_pulse);
 
 
-		for (unsigned pulse = 0, index_stretch_countdown = 0; pulse < pulses; ++cursor, ++pulse, istate = ++istate&0x3){
+		for (unsigned pulse = 0, index_stretch_countdown = 0; pulse < pulses; ++pulse, istate = ++istate&0x3){
 			unsigned char yy = forwards? FWD[istate]: BAK[istate];
 
 			if (++line > PPR){
