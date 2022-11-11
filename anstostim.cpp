@@ -156,7 +156,7 @@ class QuadEncoder {
 		if (verbose){
 			printf("make_pulses cursor:%d tpp:%u pulses:%u direction:%s\n", cursor-dio, ticks_per_pulse, pulses, forwards?"F":"R");
 		}
-		assert (cursor-dio < max_dio-pulses*ticks_per_pulse);
+		assert (cursor-dio < max_dio*2-pulses*ticks_per_pulse);
 
 
 		for (unsigned pulse = 0, index_stretch_countdown = 0; pulse < pulses; ++cursor, ++pulse, istate = ++istate&0x3){
@@ -195,19 +195,24 @@ class QuadEncoder {
 		}
 	}
 
-	const unsigned long THRESHOLD = 1000;
+
 
 	void ramp(const Trajectory& tj, bool forwards){
 		unsigned long max_ticks = tj.tt * TPS;
+		const unsigned long THRESHOLD = max_ticks/10;
 		unsigned long limit = 1;
 		unsigned long tick = 0;
 
+		if (verbose){
+			printf("ramp: THRESHOLD:%lu\n", THRESHOLD);
+		}
 		for (unsigned long ticks_per_pulse = 1; tick < max_ticks;  tick += ticks_per_pulse*limit){
-			if (vx_pps(tj, tick) < THRESHOLD){
-				*cursor++ = 0;
+			if (vx_pps(tj, tick) < 1){
+				;//*cursor++ = 0;
 			}else{
 				//printf("ramp ticks:%lu\n", tick);
 				ticks_per_pulse = TPS / vx_pps(tj, tick);
+
 				if (verbose){
 					printf("ramp: tick:%d ticks_per_pulse:%d\n", tick, ticks_per_pulse);
 				}
@@ -215,8 +220,8 @@ class QuadEncoder {
 					limit = 1;
 					ticks_per_pulse = THRESHOLD;
 				}else{
-					limit = std::min(ticks_per_pulse, max_ticks-tick);
-					limit = std::min(limit, THRESHOLD);
+					//limit = std::min(ticks_per_pulse, max_ticks-tick);
+					limit = std::min(max_ticks-tick, 10000UL);
 				}
 
 				make_pulses(ticks_per_pulse, limit, forwards);
@@ -237,17 +242,16 @@ class QuadEncoder {
 		make_pulses(ticks_per_pulse, states, forwards);
 	}
 	void slow_down(const Trajectory& tj, bool forwards){
-		verbose = 1;
 		printf("slow down\n");
 		ramp(tj, forwards);
 	}
 	static int verbose;
 public:
 	QuadEncoder(unsigned _line=0): ABIT(1<<0), BBIT(1<<1), IBIT(1<<2), EBIT(1<<3), tick(0), max_dio(Trajectory::ttotal*TPS), line(_line), istate(0) {
-		dio = new unsigned char[max_dio];
+		dio = new unsigned char[max_dio*2];
 		cursor = dio;
-		printf("QuadEncoder: tt:%u s TPS:%u  ticks:%u\n",
-				Trajectory::ttotal, TPS, Trajectory::ttotal*TPS);
+		printf("QuadEncoder: tt:%u s TPS:%u  ticks:%u alloc:%d\n",
+				Trajectory::ttotal, TPS, max_dio, max_dio*2);
 	}
 	~QuadEncoder() {
 		FILE* fp = fopen("dio.dat", "w");
