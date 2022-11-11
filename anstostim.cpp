@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include <assert.h>     /* assert */
+
 
 /* PULSES are position */
 /* TICKS are samples clocks, constant 10MHz */
@@ -24,6 +26,17 @@
 #define S_RAMP      ((ACC*T_RAMP*T_RAMP)/2)
 
 #define TPS			10000000	// Ticks Per Second minimum unit of time 10MHz
+
+
+int getenv_default(const char* key, int def = 0){
+	const char* vs = getenv(key);
+	if (vs){
+		return atoi(vs);
+	}else{
+		return def;
+	}
+}
+
 
 class Move {
 public:
@@ -80,14 +93,13 @@ struct Trajectory {
 		//printf("Trajectory tt:%u ttotal:%u\n", tt, ttotal);
 	}
 	void print() const {
-		printf("Trajectory: uu:%3u vv:%3u tt:%3u  => ss:%u\n", uu, vv, tt, (uu+vv)*tt/2);
+		printf("Trajectory: uu:%3u vv:%3u tt:%3u  => ss:%u  total:%lu\n", uu, vv, tt, (uu+vv)*tt/2, ttotal);
 	}
 };
 
 unsigned Trajectory::ttotal;
 
 class Motion {
-
 	Motion(const Move& _move): move(_move) {
 		if (move.distance > 2*S_RAMP){
 			stages.emplace_back(Trajectory(0, MAX_RPS, T_RAMP));
@@ -97,8 +109,12 @@ class Motion {
 			unsigned s_ramp = move.distance/2;
 			unsigned t_ramp = sqrt(2*s_ramp/ACC);  // s=ut +1/2 at*t
 			unsigned vmax = ACC*t_ramp;
-			stages.emplace_back(Trajectory(0, vmax, t_ramp));
-			stages.emplace_back(Trajectory(vmax, 0, t_ramp));
+			if (vmax > 0){
+				stages.emplace_back(Trajectory(0, vmax, t_ramp));
+				stages.emplace_back(Trajectory(vmax, 0, t_ramp));
+			}else{
+				printf("WARNING: Motion too small to register\n");
+			}
 		}
 	}
 public:
@@ -130,36 +146,25 @@ class QuadEncoder {
 	const int BAK[4] = { BBIT, BBIT|ABIT, ABIT, 0 };
 
 	unsigned long long tick;
+	const unsigned long max_dio;
 	unsigned char* dio;				// only 4 bits are valid;
 	unsigned char* cursor;
 	unsigned long line;
+	unsigned istate;
 
-	void make_pulses(unsigned ticks_per_pulse, unsigned states, bool forwards){
-		const unsigned f50pc = ticks_per_pulse/2;
-		const unsigned f25pc = ticks_per_pulse/4;
-		const unsigned f75pc = 3*f25pc;
-		int index_stretch_countdown = 0;
+	void make_pulses(unsigned ticks_per_pulse, unsigned pulses, bool forwards){
+		if (verbose){
+			printf("make_pulses cursor:%d tpp:%u pulses:%u direction:%s\n", cursor-dio, ticks_per_pulse, pulses, forwards?"F":"R");
+		}
+		assert (cursor-dio < max_dio-pulses*ticks_per_pulse);
 
-		//printf("make_pulses tpp:%u states:%u %s\n", ticks_per_pulse, states, forwards?"F":"R");
-		for (unsigned state = 0; state < states; ++state, ++cursor){
-			unsigned char yy = 0;
-			unsigned sfrac = state%ticks_per_pulse;
 
-			/* AquadB */
-			if (sfrac <= f50pc){
-				yy |= (forwards? ABIT: BBIT);
+		for (unsigned pulse = 0, index_stretch_countdown = 0; pulse < pulses; ++cursor, ++pulse, istate = ++istate&0x3){
+			unsigned char yy = forwards? FWD[istate]: BAK[istate];
+
+			if (++line > PPR){
+				line = 0;
 			}
-			if (sfrac >= f25pc && sfrac <= f75pc){
-				yy |= (forwards? BBIT: ABIT);
-			}
-			/* INDEX */
-			if (state && sfrac == 0){
-				++line;
-				if (line > PPR){
-					line = 0;
-				}
-			}
-
 			if (line == 0){
 				yy |= line == 0? IBIT: 0;
 
@@ -176,7 +181,9 @@ class QuadEncoder {
 				yy |= EBIT;
 			}
 
-			*cursor = yy;
+			for (int tick = ticks_per_pulse; tick--; ){
+				*cursor++ = yy;
+			}
 		}
 	}
 	unsigned vx_pps(const Trajectory& tj, unsigned long tick){
@@ -187,20 +194,36 @@ class QuadEncoder {
 			return PPR*tj.uu - PPR*(tj.uu-tj.vv)*tick/maxticks;
 		}
 	}
+
+	const unsigned long THRESHOLD = 1000;
+
 	void ramp(const Trajectory& tj, bool forwards){
-		const unsigned long max_ticks = tj.tt * TPS;
-		unsigned ticks_per_pulse;
-		for (unsigned long tick = 0; tick < max_ticks;  tick += ticks_per_pulse){
-			if (vx_pps(tj, tick) < 10 /*== 0*/ ){
+		unsigned long max_ticks = tj.tt * TPS;
+		unsigned long limit = 1;
+		unsigned long tick = 0;
+
+		for (unsigned long ticks_per_pulse = 1; tick < max_ticks;  tick += ticks_per_pulse*limit){
+			if (vx_pps(tj, tick) < THRESHOLD){
 				*cursor++ = 0;
-				ticks_per_pulse = 1;
 			}else{
 				//printf("ramp ticks:%lu\n", tick);
 				ticks_per_pulse = TPS / vx_pps(tj, tick);
-				int limit = ticks_per_pulse;
-				if (limit > max_ticks-tick) limit = max_ticks-tick;
+				if (verbose){
+					printf("ramp: tick:%d ticks_per_pulse:%d\n", tick, ticks_per_pulse);
+				}
+				if (ticks_per_pulse > THRESHOLD){
+					limit = 1;
+					ticks_per_pulse = THRESHOLD;
+				}else{
+					limit = std::min(ticks_per_pulse, max_ticks-tick);
+					limit = std::min(limit, THRESHOLD);
+				}
+
 				make_pulses(ticks_per_pulse, limit, forwards);
 			}
+		}
+		if (verbose){
+			printf("ramp finished at %d ticks\n", tick);
 		}
 	}
 	void speed_up(const Trajectory& tj, bool forwards) {
@@ -214,14 +237,16 @@ class QuadEncoder {
 		make_pulses(ticks_per_pulse, states, forwards);
 	}
 	void slow_down(const Trajectory& tj, bool forwards){
+		verbose = 1;
 		printf("slow down\n");
 		ramp(tj, forwards);
 	}
+	static int verbose;
 public:
-	QuadEncoder(unsigned _line=0): ABIT(1<<0), BBIT(1<<1), IBIT(1<<2), EBIT(1<<3), tick(0), line(_line) {
-		dio = new unsigned char[Trajectory::ttotal*TPS];
+	QuadEncoder(unsigned _line=0): ABIT(1<<0), BBIT(1<<1), IBIT(1<<2), EBIT(1<<3), tick(0), max_dio(Trajectory::ttotal*TPS), line(_line), istate(0) {
+		dio = new unsigned char[max_dio];
 		cursor = dio;
-		printf("QuadEncoder: tt:%u s TPS:%u  states:%u\n",
+		printf("QuadEncoder: tt:%u s TPS:%u  ticks:%u\n",
 				Trajectory::ttotal, TPS, Trajectory::ttotal*TPS);
 	}
 	~QuadEncoder() {
@@ -275,6 +300,7 @@ public:
 	static int ebit_shows_reverse;
 };
 
+int QuadEncoder::verbose = getenv_default("QUAD_ENCODER_VERBOSE");
 int QuadEncoder::index_stretch;
 int QuadEncoder::ebit_shows_reverse;
 
