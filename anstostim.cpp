@@ -13,7 +13,7 @@
 /* PULSES are position */
 /* TICKS are samples clocks, constant 10MHz */
 
-#define PPR			10000	// PULSES PER REV
+#define PPR		10000	// PULSES PER REV
 #define MAX_RPS		100		// MAX revs per sec
 #define MAX_PPS     (PPR*MAX_RPS)
 
@@ -83,32 +83,35 @@ long Move::seq_start;
 unsigned long Move::total_distance;
 
 struct Trajectory {
-	unsigned uu;		// start speed RPS
-	unsigned vv; 		// end speed RPS
-	unsigned tt;        // duration
-	static unsigned ttotal;
-	Trajectory(unsigned _uu, unsigned _vv, unsigned _tt):
+	double uu;		// start speed RPS
+	double vv; 		// end speed RPS
+	double tt;        // duration
+	static double ttotal;
+	Trajectory(double _uu, double _vv, double _tt):
 		uu(_uu), vv(_vv), tt(_tt) {
 		ttotal += tt;
-		//printf("Trajectory tt:%u ttotal:%u\n", tt, ttotal);
+		printf("Trajectory tt:%.3f ttotal:%.3f\n", tt, ttotal);
 	}
 	void print() const {
-		printf("Trajectory: uu:%3u vv:%3u tt:%3u  => ss:%u  total:%lu\n", uu, vv, tt, (uu+vv)*tt/2, ttotal);
+		printf("Trajectory: uu:%.3f vv:%.3f tt:%.3f  => ss:%.3f\n", uu, vv, tt, (uu+vv)*tt/2);
 	}
 };
 
-unsigned Trajectory::ttotal;
+double Trajectory::ttotal;
 
 class Motion {
 	Motion(const Move& _move): move(_move) {
+		printf("%s  distance > *S_RAMP ? %lu > %lu %s\n", __FUNCTION__, move.distance, 2*S_RAMP, move.distance>2*S_RAMP? "YES": "NO");
+
 		if (move.distance > 2*S_RAMP){
 			stages.emplace_back(Trajectory(0, MAX_RPS, T_RAMP));
 			stages.emplace_back(Trajectory(MAX_RPS, MAX_RPS, (move.distance-2*S_RAMP)/MAX_RPS));
 			stages.emplace_back(Trajectory(MAX_RPS, 0, T_RAMP));
 		}else{
-			unsigned s_ramp = move.distance/2;
-			unsigned t_ramp = sqrt(2*s_ramp/ACC);  // s=ut +1/2 at*t
-			unsigned vmax = ACC*t_ramp;
+			double s_ramp = move.distance/2;
+			double t_ramp = sqrt(2*s_ramp/ACC);  // s=ut +1/2 at*t
+			double vmax = ACC*t_ramp;
+			printf("%s distance:%lu s_ramp:%u t_ramp:%u vmax:%u\n", __FUNCTION__, move.distance, s_ramp, t_ramp, vmax);
 			if (vmax > 0){
 				stages.emplace_back(Trajectory(0, vmax, t_ramp));
 				stages.emplace_back(Trajectory(vmax, 0, t_ramp));
@@ -165,7 +168,7 @@ class QuadEncoder {
 			if (++line > PPR){
 				line = 0;
 			}
-			if (line == 0){
+			if (line == 0 && index_stretch >= 0){
 				yy |= line == 0? IBIT: 0;
 
 				if (index_stretch){
@@ -312,7 +315,7 @@ int main(int argc, const char* argv[]){
 	std::string config_file = "anstostim.cfg";
 	if (argc > 1) config_file = argv[1];
 	std::ifstream input_file(config_file);
-	unsigned start_line;
+	int start_line;
 	if (!input_file.is_open()) {
 		std::cerr << "Could not open the file - '"
 			 << config_file << "'" << std::endl;
@@ -323,8 +326,8 @@ int main(int argc, const char* argv[]){
 
 	std::string line;
 	while (std::getline(input_file, line)){
-		if (sscanf(line.c_str(), "STARTLINE=%u", &start_line) == 1 ||
-		    sscanf(line.c_str(), "INDEX_STRETCH=%u", &QuadEncoder::index_stretch) == 1 ||
+		if (sscanf(line.c_str(), "STARTLINE=%d", &start_line) == 1 ||
+		    sscanf(line.c_str(), "INDEX_STRETCH=%d", &QuadEncoder::index_stretch) == 1 ||
 		    sscanf(line.c_str(), "EBIT_SHOWS_REVERSE=%u", &QuadEncoder::ebit_shows_reverse) == 1){
 			fname_ext += "_" + line;
 			continue;
