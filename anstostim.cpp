@@ -17,13 +17,14 @@
 #define MAX_RPS		100		// MAX revs per sec
 #define MAX_PPS     (PPR*MAX_RPS)
 
-#define ACC 		50     // Revs Per Sec Per Sec
+#define ACC 		100 		// Revs Per Sec Per Sec
 
 #define ACCP		(ACC*PPR)	// Pulses per sec per sec
 #define ACCP_MS		(ACCP/1000) // Pulses per sec per msec
 
-#define T_RAMP      (MAX_RPS/ACC)
-#define S_RAMP      ((ACC*T_RAMP*T_RAMP)/2)
+#define T_RAMP2		(2*MAX_RPS/ACC)
+#define T_RAMP      sqrt(T_RAMP2)
+#define S_RAMP      ((ACC*T_RAMP2)/2)
 
 #define TPS			10000000	// Ticks Per Second minimum unit of time 10MHz
 
@@ -101,7 +102,7 @@ double Trajectory::ttotal;
 
 class Motion {
 	Motion(const Move& _move): move(_move) {
-		printf("%s  distance > *S_RAMP ? %lu > %lu %s\n", __FUNCTION__, move.distance, 2*S_RAMP, move.distance>2*S_RAMP? "YES": "NO");
+		printf("%s  distance > 2*S_RAMP ? %lu > %lu %s\n", __FUNCTION__, move.distance, 2*S_RAMP, move.distance>2*S_RAMP? "YES": "NO");
 
 		if (move.distance > 2*S_RAMP){
 			stages.emplace_back(Trajectory(0, MAX_RPS, T_RAMP));
@@ -240,8 +241,8 @@ class QuadEncoder {
 	}
 	void full_ahead(const Trajectory& tj, bool forwards){
 		const unsigned ticks_per_pulse = TPS / (tj.uu * PPR);
-		const unsigned states = tj.tt * TPS;
-		printf("full_ahead ticks_per_pulse:%u %s\n", ticks_per_pulse, forwards? "F": "R");
+		const unsigned states = tj.tt * tj.uu * PPR;
+		printf("full_ahead ticks_per_pulse:%u states:%u %s\n", ticks_per_pulse, states, forwards? "F": "R");
 		make_pulses(ticks_per_pulse, states, forwards);
 	}
 	void slow_down(const Trajectory& tj, bool forwards){
@@ -253,7 +254,7 @@ public:
 	QuadEncoder(unsigned _line=0): ABIT(1<<0), BBIT(1<<1), IBIT(1<<2), EBIT(1<<3), tick(0), max_dio(Trajectory::ttotal*TPS), line(_line), istate(0) {
 		dio = new unsigned char[max_dio*2];
 		cursor = dio;
-		printf("QuadEncoder: tt:%u s TPS:%u  ticks:%u alloc:%d\n",
+		printf("QuadEncoder: tt:%u s TPS:%u  ticks:%u alloc:%lu\n",
 				Trajectory::ttotal, TPS, max_dio, max_dio*2);
 	}
 	~QuadEncoder() {
@@ -340,7 +341,7 @@ int main(int argc, const char* argv[]){
 		m.print();
 		Motion::add(m);
 	}
-	printf("Total distance: %lu\n", Move::total_distance);
+	printf("Total distance: %lu total time:%f samples:%.0f\n", Move::total_distance, Trajectory::ttotal, ceil(Trajectory::ttotal*TPS));
 	QuadEncoder qe(start_line);
 	for (const Motion& m : Motion::motions){
 		qe(m);
