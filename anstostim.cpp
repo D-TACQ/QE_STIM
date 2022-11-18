@@ -6,6 +6,7 @@
 #include <math.h>
 #include <algorithm>
 #include <cstring>
+#include <map>
 
 #include <assert.h>     /* assert */
 
@@ -140,6 +141,8 @@ public:
 
 std::vector<Motion> Motion::motions;
 
+#define TPP_HISTO_MAX	256
+
 class QuadEncoder {
 	const int ABIT;
 	const int BBIT;
@@ -156,7 +159,19 @@ class QuadEncoder {
 	unsigned long line;
 	unsigned istate;
 
+	static std::map<unsigned, unsigned> tpp_histogram;
+
+	void tpp_histogram_add(unsigned tpp){
+		if (tpp > TPP_HISTO_MAX) tpp = TPP_HISTO_MAX;
+
+		if (tpp_histogram.contains(tpp)){
+			tpp_histogram[tpp] += 1;
+		}else{
+			tpp_histogram[tpp] = 1;
+		}
+	}
 	void make_pulses(unsigned ticks_per_pulse, unsigned pulses, bool forwards){
+		tpp_histogram_add(ticks_per_pulse);
 		if (verbose){
 			printf("make_pulses cursor:%d tpp:%u pulses:%u direction:%s\n", cursor-dio, ticks_per_pulse, pulses, forwards?"F":"R");
 		}
@@ -304,6 +319,16 @@ public:
 		fwrite(raw, 1, raw_len, fp);
 		fclose(fp);
 	}
+	void tpp_histogram_print(void) {
+		for (unsigned tpp = 0; tpp < TPP_HISTO_MAX; ++tpp){
+			if (tpp_histogram.contains(tpp)){
+				printf("tpp: %4d x %u\n", tpp, tpp_histogram[tpp]);
+			}
+		}
+	}
+
+
+
 	static int index_stretch;
 	static int ebit_shows_reverse;
 };
@@ -311,6 +336,7 @@ public:
 int QuadEncoder::verbose = getenv_default("QUAD_ENCODER_VERBOSE");
 int QuadEncoder::index_stretch;
 int QuadEncoder::ebit_shows_reverse;
+std::map<unsigned, unsigned> QuadEncoder::tpp_histogram;
 
 int main(int argc, const char* argv[]){
 	std::string config_file = "anstostim.cfg";
@@ -353,4 +379,7 @@ int main(int argc, const char* argv[]){
 	std::string fname = config_file + "-dio4" + fname_ext;
 	printf("Compress file: %s\n", fname.c_str());
 	qe.compress(fname.c_str());
+	if (getenv_default("PRINT_HISTO", 0)){
+		qe.tpp_histogram_print();
+	}
 }
