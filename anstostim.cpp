@@ -105,7 +105,9 @@ class Motion {
 	Motion(const Move& _move): move(_move) {
 		printf("%s  distance > 2*S_RAMP ? %lu > %lu %s\n", __FUNCTION__, move.distance, 2*S_RAMP, move.distance>2*S_RAMP? "YES": "NO");
 
-		if (move.distance > 2*S_RAMP){
+		if (infinite_acceleration){
+			stages.emplace_back(Trajectory(MAX_RPS, MAX_RPS, move.distance/MAX_RPS));
+		}else if (move.distance > 2*S_RAMP){
 			stages.emplace_back(Trajectory(0, MAX_RPS, T_RAMP));
 			stages.emplace_back(Trajectory(MAX_RPS, MAX_RPS, (move.distance-2*S_RAMP)/MAX_RPS));
 			stages.emplace_back(Trajectory(MAX_RPS, 0, T_RAMP));
@@ -137,9 +139,11 @@ public:
 	static void add(const Move& move){
 		motions.emplace_back(Motion(move));
 	}
+	static int infinite_acceleration;		// bool with %d characteristics
 };
 
 std::vector<Motion> Motion::motions;
+int Motion::infinite_acceleration;
 
 #define TPP_HISTO_MAX	256
 
@@ -353,9 +357,10 @@ int main(int argc, const char* argv[]){
 
 	std::string line;
 	while (std::getline(input_file, line)){
-		if (sscanf(line.c_str(), "STARTLINE=%d", &start_line) == 1 ||
-		    sscanf(line.c_str(), "INDEX_STRETCH=%d", &QuadEncoder::index_stretch) == 1 ||
-		    sscanf(line.c_str(), "EBIT_SHOWS_REVERSE=%u", &QuadEncoder::ebit_shows_reverse) == 1){
+		if (sscanf(line.c_str(), "STARTLINE=%d", &start_line)                               == 1 ||
+		    sscanf(line.c_str(), "INDEX_STRETCH=%d", &QuadEncoder::index_stretch)           == 1 ||
+		    sscanf(line.c_str(), "EBIT_SHOWS_REVERSE=%u", &QuadEncoder::ebit_shows_reverse) == 1 ||
+		    sscanf(line.c_str(), "WARP=%d", &Motion::infinite_acceleration)                 == 1    ){
 			fname_ext += "_" + line;
 			continue;
 		}
